@@ -9,5 +9,4 @@
 
 (defn -main
   	[& args]
-  	(doseq [elem (get-hrefs(get-body "http://habrahabr.ru"))]
-  		(println elem)))
+  	(println (get-body "http://habrahabr1.ru")))
