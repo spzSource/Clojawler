@@ -9,4 +9,4 @@
 
 (defn -main
   	[& args]
-  	(println (get-body "http://habrahabr1.ru")))
+  	(walk (retrieve-lines (first args)) 3))
