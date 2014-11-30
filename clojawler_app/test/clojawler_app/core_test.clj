@@ -34,9 +34,9 @@
 
 
 
-(deftest parse-page-test-positive
+(deftest process-page-test-positive
 	(testing "Unable to parse page."
-		(let [new-child (parse-page 
+		(let [new-child (process-page 
 				(new-node "http://habrahabr.ru", nil, 3, 200, nil, (atom[]), ["http://toster.ru/"]),
 				"http://toster.ru/", 2)]
 			(is (= 0 (compare (:url new-child), "http://toster.ru/")))
@@ -45,3 +45,14 @@
 			(is (nil? (:redirect-info new-child)))
 			(is (= 0 (count @(:childs new-child))))
 			(is (< 0 (count (:urls-to-process new-child)))))))
+
+
+(deftest get-hrefs-test-positive
+	(testing "Unable to get hrefs."
+		(is (seq? (get-hrefs (:body (get-content "http://www.voxmedia.com/terms-of-use")), "http://www.voxmedia.com/terms-of-use")))))
+
+
+
+(deftest get-hrefs-test-positive-1
+	(testing "Unable to get hrefs."
+		(is (empty? (get-hrefs "", "http://sitename.com")))))

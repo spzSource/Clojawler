@@ -1,6 +1,7 @@
 (ns clojawler-app.crawler
   	(:require [clj-http.client :as client])
   	(:require [net.cgrand.enlive-html :as html])
+  	(:require [com.climate.claypoole :as cpool])
   	(:import java.lang.String))
 
 
@@ -17,16 +18,25 @@
 
 (defn new-root
 	[urls, depth]
-	(new-node "*", nil, depth, nil, nil, (atom []), urls))
+	(new-node "*", nil, depth, 200, nil, (atom []), urls))
 
 
 (defn get-content
 	[url]
 	(try
-		(client/get url)
-	(catch Exception e { :status 404,
-						 :body ""
-						 :headers "" })))
+		(client/get url { 
+			:max-redirects 1 
+			:socket-timeout 5000 
+			:conn-timeout 5000 })
+	(catch Exception e { 
+		:status 404,
+		:body ""
+		:headers "" })))
+
+
+(defn remove-nils
+	[hrefs]
+	(filter #(not (nil? %)), hrefs))
 
 
 (defn exclude-self-refs
@@ -39,11 +49,19 @@
 	(filter #(boolean (.contains %1 "http")) hrefs))
 
 
+(defn convert-to-base
+	[hrefs]
+	(distinct (remove-nils (map #(re-find #"http.*\.[a-zA-Z]+/", %), hrefs))))
+
+
 (defn get-hrefs
 	[body, url]
     (let [snippets (html/html-snippet body)
-    	hrefs (validate-hrefs (exclude-self-refs (map #(:href (:attrs %1)) (html/select snippets #{ [:a] })), url))]
-    	hrefs))
+    	hrefs (convert-to-base (validate-hrefs (exclude-self-refs (remove-nils
+    			(map #(:href (:attrs %1)) (html/select snippets #{ [:a] }))), url)))]
+    	(if (nil? hrefs)
+    		[]
+    		hrefs)))
 
 
 (defn determine-status
@@ -64,35 +82,46 @@
 
 (defn create-new-child
 	[url, parent, depth, content]
+	(println "create-new-child")
 	(new-node url, parent, depth, 
 		(determine-status content), (get-redirect-info content), 
 		(atom []), (get-hrefs (:body content) url)))
 
 
-(defn parse-page
+(defn process-page
 	[p-node, url, depth]
 	(let [content (get-content url)
 		  new-child (create-new-child url, p-node, depth, content)]
-		(print url)
+		(println "process-page")
 	 	(swap! (:childs p-node) conj new-child)
 	 	new-child))
 
-
+;;
+;; Oh nooo!!1
+;; DOCS: pmap is implemented using Clojure futures.  See examples for 'future'
+;; for discussion of an undesirable 1-minute wait that can occur before
+;; your standalone Clojure program exits if you do not use shutdown-agents.
+;;
+;; NOTE: claypool/pmap uses the thread pool for pmap execution.
+;; github: https://github.com/TheClimateCorporation/claypoole
 (defn process-node-clilds
 	[p-node, childs-urls, depth]
-	(pmap #(parse-page p-node %1 depth) childs-urls))
+	(println "process-node-clilds")
+	(cpool/pmap (+ 2 (cpool/ncpus)) #(process-page p-node %1 depth) childs-urls))
 
 
 (defn process-node
 	[p-node, depth, urls]
+	(println (:url p-node) depth)
 	(let [current-depth (dec depth)]
-		(if (> 0)
+		(if (> current-depth 0)
 			(doseq [created-child (process-node-clilds p-node, urls, current-depth)]
 				(process-node created-child, current-depth, (:urls-to-process created-child)))
-			p-node)))
+			 p-node)))
 
 
 (defn walk
 	[start-urls, depth]
 	(let [root-node (new-root start-urls, depth)]
-		(process-node root-node, depth, start-urls)))
+		(process-node root-node, depth, start-urls)
+		root-node))
