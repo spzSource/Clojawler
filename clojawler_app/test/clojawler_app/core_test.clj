@@ -1,6 +1,8 @@
 (ns clojawler-app.core-test
   	(:require [clojure.test       :refer :all]
               [clojawler-app.core :refer :all])
+  	(:require [clj-http.client :as client])
+
   	(:use clojawler-app.crawler))
 
 
@@ -56,3 +58,11 @@
 (deftest get-hrefs-test-positive-1
 	(testing "Unable to get hrefs."
 		(is (empty? (get-hrefs "", "http://sitename.com")))))
+
+
+(deftest error-404-handling-test
+	(testing "Wrong error handling."
+		(with-redefs [client/get (fn [url, options] (throw (Exception. "Error 404.")))]
+			(is (= 404 (:status (get-content "http://habrahabr.ru/")))))))
+		; (binding [execute-get (fn [url] (throw (Exception. "Error 404.")))]
+		; 	(is (= 404 (:status get-content("http://habrahabr.ru/")))))))

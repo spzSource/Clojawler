@@ -4,6 +4,7 @@
   	(:require [com.climate.claypoole :as cpool])
   	(:import java.lang.String))
 
+
 (def http-client-options 
     { :max-redirects 1 
 	  :socket-timeout 5000 
@@ -62,7 +63,7 @@
 (defn get-hrefs
 	[body, url]
     (let [snippets (html/html-snippet body)
-    	hrefs (convert-to-base (validate-hrefs (exclude-self-refs (remove-nils
+    	  hrefs (convert-to-base (validate-hrefs (exclude-self-refs (remove-nils
     			(map #(:href (:attrs %1)) (html/select snippets #{ [:a] }))), url)))]
     	(if (nil? hrefs)
     		[]
