@@ -4,6 +4,17 @@
   	(:require [com.climate.claypoole :as cpool])
   	(:import java.lang.String))
 
+(def http-client-options 
+    { :max-redirects 1 
+	  :socket-timeout 5000 
+	  :conn-timeout 5000 } )
+
+
+(def http-error-404-response-stub
+	{ :status 404,
+	  :body ""
+	  :headers "" } )
+
 
 (defn new-node
 	[url, parent, depth, status, redirect-info, childs, urls]
@@ -13,7 +24,7 @@
 	  :status status,
 	  :redirect-info redirect-info,
 	  :childs childs
-	  :urls-to-process urls})
+	  :urls-to-process urls })
 
 
 (defn new-root
@@ -24,14 +35,8 @@
 (defn get-content
 	[url]
 	(try
-		(client/get url { 
-			:max-redirects 1 
-			:socket-timeout 5000 
-			:conn-timeout 5000 })
-	(catch Exception e { 
-		:status 404,
-		:body ""
-		:headers "" })))
+		(client/get url http-client-options)
+		(catch Exception e http-error-404-response-stub)))
 
 
 (defn remove-nils
@@ -82,7 +87,6 @@
 
 (defn create-new-child
 	[url, parent, depth, content]
-	(println "create-new-child")
 	(new-node url, parent, depth, 
 		(determine-status content), (get-redirect-info content), 
 		(atom []), (get-hrefs (:body content) url)))
@@ -92,27 +96,26 @@
 	[p-node, url, depth]
 	(let [content (get-content url)
 		  new-child (create-new-child url, p-node, depth, content)]
-		(println "process-page")
 	 	(swap! (:childs p-node) conj new-child)
 	 	new-child))
 
 ;;
-;; Oh nooo!!1
-;; DOCS: pmap is implemented using Clojure futures.  See examples for 'future'
-;; for discussion of an undesirable 1-minute wait that can occur before
-;; your standalone Clojure program exits if you do not use shutdown-agents.
+;; Oh nooo!!1 The standart pmap uses futures (:fp:)
 ;;
-;; NOTE: claypool/pmap uses the thread pool for pmap execution.
+;; 	DOCS: pmap is implemented using Clojure futures.  See examples for 'future'
+;; 		for discussion of an undesirable 1-minute wait that can occur before
+;; 		your standalone Clojure program exits if you do not use shutdown-agents.
+;;
+;; NOTE:   claypool/pmap uses the thread pool for pmap execution.
 ;; github: https://github.com/TheClimateCorporation/claypoole
+;;
 (defn process-node-clilds
 	[p-node, childs-urls, depth]
-	(println "process-node-clilds")
 	(cpool/pmap (+ 2 (cpool/ncpus)) #(process-page p-node %1 depth) childs-urls))
 
 
 (defn process-node
 	[p-node, depth, urls]
-	(println (:url p-node) depth)
 	(let [current-depth (dec depth)]
 		(if (> current-depth 0)
 			(doseq [created-child (process-node-clilds p-node, urls, current-depth)]
@@ -125,3 +128,37 @@
 	(let [root-node (new-root start-urls, depth)]
 		(process-node root-node, depth, start-urls)
 		root-node))
+
+
+(defn calculate-indent
+  	[inv-depth]
+  	(str (apply str (take inv-depth (repeat "-"))), "> "))
+
+
+(defn- get-status-representation
+	[p-node]
+	(case (:status p-node)
+		200 ""
+		404 " bad"
+		(301 302) (str " redirect -> ", (:redirect-info p-node))))
+
+
+(defn- generate-node-info
+	[p-node]
+	(let [urls-count (count (:urls-to-process p-node))
+		  status-representation (get-status-representation p-node)]
+		(str (:url p-node), " ", urls-count, status-representation)))
+
+
+(defn- print-node
+  	[p-node, inv-depth]
+  	(let [str-indent (calculate-indent (* 3 inv-depth))]
+   		(println str-indent (generate-node-info p-node))))
+
+
+(defn print-nodes
+	[p-node, depth]
+	(print-node p-node depth)
+	(doseq [child-node @(:childs p-node)]
+		(print-nodes child-node (inc depth))))
+
