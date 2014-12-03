@@ -1,6 +1,6 @@
 Clojawler
 =========
-How to execute clusterization (example):
+How to execute:
 -----------------------------------------
 	lein run  src/clojawler_app/urls.txt 3
 
